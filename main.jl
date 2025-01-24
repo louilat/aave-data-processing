@@ -16,7 +16,7 @@ DotEnv.load!()
 
 # Run parameters
 balances_input_path = "aave-data/data-prod/aave-v3/users-positions-combined/"
-hourly_prices_input_path = "aave-data/data-prod/aave-v3/messari-prices/"
+hourly_prices_input_path = "aave-data/data-prod/aave-v3/messari-prices/hourly_prices_2024_12.csv"
 ltv_input_path = "aaveV3-live-data/configuration/reserve_configuration_2025-01-20.csv"
 snapshot_date = DateTime(2024, 12)
 
@@ -42,7 +42,7 @@ abalances::Dict, vbalances::Dict = fetch_users_balances(
 )
 
 println("STEP 2: Extracting hourly prices...")
-prices::Dict = fetch_assets_prices(
+prices::DataFrame = fetch_assets_prices(
     cfig,
     "llatournerie",
     hourly_prices_input_path,
@@ -56,20 +56,24 @@ ltv::DataFrame = fetch_loan_to_values(
     ltv_input_path,
 )
 
-println("STEP 4: Matching atoken balances with hourly prices...")
-abalances = match_balances_with_prices(abalances, prices)
-
-println("STEP 5: Matching vtoken balances with hourly prices...")
-vbalances = match_balances_with_prices(vbalances, prices)
-
-println("STEP 6: Computing users' balances...")
+println("STEP 4: Computing users' balances...")
 all_abalances::DataFrame = concat_all_balances(abalances)
 all_vbalances::DataFrame = concat_all_balances(vbalances)
-combined_balances = compute_users_balances_snapshot(
+combined_balances::DataFrame = compute_users_balances_snapshot(
     all_abalances,
     all_vbalances,
     snapshot_date,
 )
 
-println("STEP 7: Computing health factors...")
+println("STEP 5: Matching balances with prices...")
+combined_balances = match_balances_with_prices(combined_balances, prices)
+
+println("STEP 6: Computing health factors...")
 health_factors::DataFrame = compute_users_health_factor_snapshot(combined_balances, ltv)
+
+println("STEP 7: Generating and saving output to s3...")
+buffer = IOBuffer()
+CSV.write(buffer, health_factors)
+s3_put(cfig, "llatournerie", "aave-data/experiments/health_factors.csv", take!(buffer))
+
+println("Done!")

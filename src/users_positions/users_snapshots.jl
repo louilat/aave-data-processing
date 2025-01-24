@@ -11,11 +11,11 @@ function compute_users_balances_snapshot(
 )::DataFrame
     atoken_balances_ = atoken_balances[
         atoken_balances.datetime.<=snapshot_date,
-        [:user_address, :reserve_name, :datetime, :asset_price, :user_current_atoken_balance]
+        [:user_address, :reserve_name, :datetime, :user_current_atoken_balance]
     ]
     vtoken_balances_ = vtoken_balances[
         vtoken_balances.datetime.<=snapshot_date,
-        [:user_address, :reserve_name, :datetime, :asset_price, :user_current_vtoken_balance]
+        [:user_address, :reserve_name, :datetime, :user_current_vtoken_balance]
     ]
 
     transform!(groupby(atoken_balances_, [:user_address, :reserve_name]), :datetime => maximum => :last_datetime)
@@ -26,14 +26,14 @@ function compute_users_balances_snapshot(
             atoken_balances_[atoken_balances_.datetime.==atoken_balances_.last_datetime, :],
             [:user_address, :reserve_name]
         ),
-        :user_address, :reserve_name, :user_current_atoken_balance, :asset_price => :atoken_asset_price
+        :user_address, :reserve_name, :user_current_atoken_balance
     )
     vtoken_balances_ = select(
         unique(
             vtoken_balances_[vtoken_balances_.datetime.==vtoken_balances_.last_datetime, :],
             [:user_address, :reserve_name]
         ),
-        :user_address, :reserve_name, :user_current_vtoken_balance, :asset_price => :vtoken_asset_price
+        :user_address, :reserve_name, :user_current_vtoken_balance
     )
 
     combined_balances::DataFrame = outerjoin(
@@ -57,11 +57,11 @@ function compute_users_health_factor_snapshot(combined_balances::DataFrame, loan
         [
             :user_current_atoken_balance,
             :liquidation_threshold,
-            :atoken_asset_price
+            :asset_price
         ] => ((bal, lt, ap) -> bal .* lt .* ap) => :hf_numerator,
         [
             :user_current_vtoken_balance,
-            :vtoken_asset_price
+            :asset_price
         ] => ((bal, ap) -> bal .* ap) => :hf_denominator,
     )
 
@@ -75,7 +75,7 @@ function compute_users_health_factor_snapshot(combined_balances::DataFrame, loan
         [
             :hf_numerator,
             :hf_denominator,
-        ] => ByRow((num, den) -> den == 0 ? Inf : num ./ den) => :health_factor)
+        ] => ByRow((num, den) -> (ismissing(num) || ismissing(den)) ? missing : den == 0 ? Inf : num ./ den) => :health_factor)
 
     return combined_balances_
 end
